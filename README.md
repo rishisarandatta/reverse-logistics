@@ -15,7 +15,7 @@ A web-based Reverse Logistics Management System developed using Next.js and MySQ
 ### 1. Clone the repository
 
 ```bash
-git clone <your-github-repository-url>
+git clone <https://github.com/rishisarandatta/reverse-logistics.git>
 cd reverse-logistics
 ```
 
