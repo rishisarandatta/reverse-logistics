@@ -82,9 +82,9 @@ New customers can also register from the login page.
 ### 6. Run the tests
 
 ```bash
-npm run test:db       # 54 database tests (MySQL + MongoDB), writes docs/test-results.md
+npm run test:db       # 55 database tests (MySQL + MongoDB), writes docs/test-results.md
 npm run dev           # in another terminal, then:
-npm run test:api      # 30 API tests, writes docs/api-test-results.md
+npm run test:api      # 32 API tests, writes docs/api-test-results.md
 ```
 
 `test:db` leaves the data unchanged (every test is rolled back). `test:api` creates new records; run `npm run db:reset && npm run mongo:setup` afterwards to restore the demo data.
@@ -116,6 +116,7 @@ proxy.ts                Redirects unauthenticated visitors to /login
 |--------|-------------|-------|
 | Dashboard | KPIs, work queue, return rates, reasons, courier performance, warehouse dispositions, MongoDB inspection insights | Admin, Staff |
 | Returns | Request returns, filter / full-text search, detail page with history, activity feed, inspection report and workflow actions | All (customers see their own) |
+| Pickups | Returns waiting for a courier, all pickups with status filters, quick collected / failed updates | Admin, Staff |
 | Orders | Multi-item orders in a transaction, status updates | All (customers see their own) |
 | Refunds | Refund queue with policy amounts, refund history | Admin, Staff |
 | Customers | Customer list with order / return summary, add / delete | Admin (write), Staff (read) |

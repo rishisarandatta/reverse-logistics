@@ -462,7 +462,7 @@ All are in [`database/07_queries.sql`](../database/07_queries.sql) and in `lib/d
 | `GET/POST /api/returns` | any (scoped) | List (`?status=`, `?q=`), request a return |
 | `GET/PATCH /api/returns/:id` | any (scoped), Staff approve/reject | Detail from both databases |
 | `POST /api/returns/:id/events` | any (scoped) | Message / note into MongoDB |
-| `POST /api/pickups`, `PATCH /api/pickups/:id` | Staff | Schedule / update pickup |
+| `GET/POST /api/pickups`, `PATCH /api/pickups/:id` | Staff | List pickups and returns awaiting a courier, schedule / update a pickup |
 | `POST /api/inspections` | Staff | Cross-database inspection |
 | `GET/POST /api/refunds` | Staff | Refund queue, process refund |
 | `GET /api/analytics` | Staff | SQL reports + MongoDB aggregations |
@@ -473,12 +473,45 @@ Database errors are mapped to HTTP codes: CHECK violation → 400, missing FK ta
 
 ## 13. Testing
 
-* `npm run test:db` — 54 database tests (constraints, triggers, functions, procedures, views, indexes, full-text, MongoDB validators / indexes / aggregation). Each MySQL test runs in a rolled-back transaction. Results: [`test-results.md`](test-results.md).
-* `npm run test:api` — 30 API tests against the running app: authentication, tampered cookies, role checks, row-level access, error mapping, and one complete lifecycle (order → return → approval → pickup → failed and successful inspection → refund → search). Results: [`api-test-results.md`](api-test-results.md).
+* `npm run test:db` — 55 database tests (constraints, triggers, functions, procedures, views, indexes, full-text, MongoDB validators / indexes / aggregation). Each MySQL test runs in a rolled-back transaction. Results: [`test-results.md`](test-results.md).
+* `npm run test:api` — 32 API tests against the running app: authentication, tampered cookies, role checks, row-level access, error mapping, and one complete lifecycle (order → return → approval → pickup → failed and successful inspection → refund → search). Results: [`api-test-results.md`](api-test-results.md).
 
 ## 14. Application screenshots
 
-_Add screenshots of: login, home (customer and staff), returns list with filters, return detail (workflow actions, history, activity feed, inspection report), inspection form, refunds, dashboard, search, users._
+All screenshots are in [`screenshots/`](screenshots). Screens 07–13 follow **one return (#15)** through the whole workflow.
+
+### Sign-in and customer view
+
+| | |
+|---|---|
+| **Login** with demo accounts ![](screenshots/01-login.png) | **Customer home**: own returns and what happens next ![](screenshots/02-customer-home.png) |
+| **Request a return**: only eligible items, refund rule shown per reason ![](screenshots/03-customer-request-return.png) | **Customer tracking** a new return ![](screenshots/04-customer-return-tracking.png) |
+
+### Staff overview
+
+| | |
+|---|---|
+| **Staff home**: work queue counts ![](screenshots/05-staff-home.png) | **Returns list**: status filters and full-text search ![](screenshots/06-returns-list.png) |
+
+### Return workflow (return #15)
+
+| | |
+|---|---|
+| **1. Review**: approve or reject ![](screenshots/07-workflow-1-review-request.png) | **Pickups page**: returns waiting for a courier and all pickups ![](screenshots/08-pickups-page.png) |
+| **2. Book a pickup** ![](screenshots/09-workflow-2-book-pickup.png) | **3. Confirm the pickup** ![](screenshots/10-workflow-3-confirm-pickup.png) |
+| **4. Inspection**: category checklist, defects, outcome (saved to MySQL + MongoDB) ![](screenshots/11-workflow-4-inspection-form.png) | **5. Refund**: amount from `fn_calculate_refund` ![](screenshots/12-workflow-5-issue-refund.png) |
+| **6. Complete**: audit history (MySQL trigger), activity feed and inspection report (MongoDB) ![](screenshots/13-workflow-6-refunded-complete.png) | **Customer home after the refund** ![](screenshots/14-customer-home-after-refund.png) |
+| **Failed pickup**: return goes back to Approved and can be rescheduled ![](screenshots/15-failed-pickup-reschedule.png) | **Refunds**: queue and history ![](screenshots/16-refunds.png) |
+
+### Reports, search and records
+
+| | |
+|---|---|
+| **Analytics**: SQL reports and MongoDB aggregations ![](screenshots/17-analytics-dashboard.png) | **Search**: MySQL FULLTEXT + MongoDB `$text` ![](screenshots/18-search-sql-and-mongodb.png) |
+| **Orders** ![](screenshots/19-orders.png) | **New order**: multi-item, transactional ![](screenshots/20-new-order.png) |
+| **Products**: return statistics and recovered stock ![](screenshots/21-products.png) | **Customers** ![](screenshots/22-customers.png) |
+| **Database validation**: invalid email rejected by `chk_customer_email` ![](screenshots/23-database-validation-error.png) | **User accounts** (Admin) ![](screenshots/24-user-accounts.png) |
+| **Phone layout** ![](screenshots/25-mobile-my-returns.png) | |
 
 ## 15. Conclusion
 
