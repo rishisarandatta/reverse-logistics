@@ -339,7 +339,7 @@ try {
 
     if (r.RefundID) {
       push("REFUND_ISSUED", at(r.RefundDate, "12:00"), staff,
-        `Refund of Rs. ${r.RefundAmount} issued`,
+        `Refund of ₹${Number(r.RefundAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })} issued`,
         { refundId: r.RefundID, amount: Number(r.RefundAmount), method: r.RefundMethod });
     }
   }

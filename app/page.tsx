@@ -19,11 +19,11 @@ async function StaffHome({ session }: { session: Session }) {
   ]);
 
   const tiles = [
-    { label: "To review", status: "Requested", hint: "Approve or reject" },
-    { label: "Awaiting pickup", status: "Approved", hint: "Book a courier" },
-    { label: "Pickup booked", status: "Pickup Scheduled", hint: "Confirm collection" },
-    { label: "To inspect", status: "Picked Up", hint: "Inspect the item" },
-    { label: "To refund", status: "Inspected", hint: "Issue the refund" },
+    { label: "To review", status: "Requested", hint: "Approve or reject", href: "" },
+    { label: "Awaiting pickup", status: "Approved", hint: "Book a courier", href: "/pickups" },
+    { label: "Pickup booked", status: "Pickup Scheduled", hint: "Confirm collection", href: "/pickups?status=Scheduled" },
+    { label: "To inspect", status: "Picked Up", hint: "Inspect the item", href: "" },
+    { label: "To refund", status: "Inspected", hint: "Issue the refund", href: "/refunds" },
   ];
 
   return (
@@ -35,7 +35,7 @@ async function StaffHome({ session }: { session: Session }) {
 
       <div className="stats">
         {tiles.map((tile) => (
-          <Link key={tile.status} href={`/returns?status=${encodeURIComponent(tile.status)}`} className="stat block hover:bg-[var(--surface-muted)]">
+          <Link key={tile.status} href={tile.href || `/returns?status=${encodeURIComponent(tile.status)}`} className="stat block hover:bg-[var(--surface-muted)]">
             <div className="stat-label">{tile.label}</div>
             <div className="stat-value">{counts[tile.status] ?? 0}</div>
             <div className="stat-hint">{tile.hint}</div>

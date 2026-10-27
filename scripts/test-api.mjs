@@ -102,6 +102,16 @@ await check("Authorization", "Customer cannot return another customer's item", "
 await check("Authorization", "Staff cannot create user accounts", "403", async () =>
   expectStatus(await staff.request("POST", "/api/users", { username: "x", password: "secret1", role: "Staff" }), 403));
 
+await check("Authorization", "Customer cannot list pickups", "403", async () =>
+  expectStatus(await customer.request("GET", "/api/pickups"), 403));
+
+await check("Authorization", "Staff can list pickups and returns awaiting a courier", "200 with pickups and awaiting lists", async () => {
+  const res = await staff.request("GET", "/api/pickups");
+  expectStatus(res, 200);
+  if (!Array.isArray(res.data.pickups) || !Array.isArray(res.data.awaiting)) throw new Error("missing lists");
+  return `HTTP 200, ${res.data.pickups.length} pickups, ${res.data.awaiting.length} awaiting a courier`;
+});
+
 await check("Authorization", "Staff can open analytics (SQL + MongoDB)", "200 with sql and mongo sections", async () => {
   const res = await staff.request("GET", "/api/analytics");
   expectStatus(res, 200);

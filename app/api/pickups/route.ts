@@ -1,9 +1,38 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { withTransaction } from "@/lib/db";
 import { requireApiSession } from "@/lib/auth";
-import { HttpError, errorResponse, readJson, toPositiveInt, toRequiredText, toText } from "@/lib/http";
+import {
+  HttpError,
+  errorResponse,
+  readJson,
+  toOptionalPositiveInt,
+  toPositiveInt,
+  toRequiredText,
+  toText,
+} from "@/lib/http";
 import { logReturnEvent } from "@/lib/mongo";
+import { listAwaitingPickup, listPickups } from "@/lib/data/pickups";
+import { formatDate } from "@/lib/format";
+
+// Lists pickups (?status=, ?courierId=) and the approved returns that still
+// need a courier.
+export async function GET(request: NextRequest) {
+  try {
+    await requireApiSession("Admin", "Staff");
+    const params = request.nextUrl.searchParams;
+    const [pickups, awaiting] = await Promise.all([
+      listPickups({
+        status: params.get("status"),
+        courierId: toOptionalPositiveInt(params.get("courierId"), "courierId"),
+      }),
+      listAwaitingPickup(),
+    ]);
+    return NextResponse.json({ pickups, awaiting });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
 
 // Schedules the courier pickup for an approved return. The PICKUP triggers
 // reject unapproved returns / past dates and move the return to
@@ -46,7 +75,7 @@ export async function POST(request: Request) {
       returnId,
       type: "PICKUP_SCHEDULED",
       actor: { userId: session.userId, username: session.username, role: session.role },
-      message: `Pickup booked with ${pickup.courierName ?? "courier"} for ${pickupDate}`,
+      message: `Pickup booked with ${pickup.courierName ?? "courier"} for ${formatDate(pickupDate)}`,
       data: { pickupId: pickup.pickupId, courierId, pickupDate },
     });
 

@@ -5,7 +5,7 @@ import MessageForm from "./MessageForm";
 import StatusBadge from "../../components/StatusBadge";
 import ReturnProgress from "../../components/ReturnProgress";
 import { isStaff, requirePageSession } from "@/lib/auth";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateTime, humanizeKey } from "@/lib/format";
 import { getLookups } from "@/lib/data/lookups";
 import { getReturnDetail } from "@/lib/data/returns";
 
@@ -144,7 +144,7 @@ export default async function ReturnDetailPage({ params }: PageProps<"/returns/[
                 <Row label="Inspector">{report.inspector.username}, {formatDateTime(report.inspectedAt)}</Row>
                 <Row label="Score">{report.conditionScore} / 10</Row>
                 {Object.entries(report.attributes ?? {}).map(([key, value]) => (
-                  <Row key={key} label={key}>
+                  <Row key={key} label={humanizeKey(key)}>
                     {Array.isArray(value) ? value.join(", ") || "none" : String(value)}
                   </Row>
                 ))}

@@ -9,6 +9,12 @@ export function formatDate(value: string | Date | null | undefined): string {
   return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+// "batteryHealthPct" -> "Battery health (%)"
+export function humanizeKey(key: string): string {
+  const words = key.replace(/Pct$/, "").replace(/([A-Z])/g, " $1").toLowerCase().trim();
+  return words.charAt(0).toUpperCase() + words.slice(1) + (key.endsWith("Pct") ? " (%)" : "");
+}
+
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const date = typeof value === "string" ? new Date(value.replace(" ", "T")) : value;

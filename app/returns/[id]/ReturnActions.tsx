@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import checklists from "@/lib/inspection-checklists.json";
 import { callApi } from "../../components/api";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, humanizeKey } from "@/lib/format";
 
 interface Props {
   returnId: number;
@@ -29,12 +29,6 @@ const DISPOSITION_LABELS: Record<string, string> = {
   Reject: "Reject: return not accepted, no refund",
 };
 const today = () => new Date().toISOString().slice(0, 10);
-
-// "batteryHealthPct" -> "Battery health (%)"
-function humanize(key: string): string {
-  const words = key.replace(/Pct$/, "").replace(/([A-Z])/g, " $1").toLowerCase().trim();
-  return words.charAt(0).toUpperCase() + words.slice(1) + (key.endsWith("Pct") ? " (%)" : "");
-}
 
 // Shows the next workflow step for the return's current status. The
 // database decides whether each step is allowed (triggers / procedures);
@@ -297,7 +291,7 @@ function InspectionForm({ returnId, category, warehouses, busy, run }: StepProps
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             {template.attributes.map((attribute) => (
               <div key={attribute}>
-                <label className="label" htmlFor={attribute}>{humanize(attribute)}</label>
+                <label className="label" htmlFor={attribute}>{humanizeKey(attribute)}</label>
                 <input
                   id={attribute}
                   className="input"

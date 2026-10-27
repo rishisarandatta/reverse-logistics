@@ -18,6 +18,7 @@ const GROUPS: (NavGroup & { roles: Role[] })[] = [
     links: [
       { href: "/returns", label: "Returns", roles: ["Admin", "Staff"] },
       { href: "/returns", label: "My returns", roles: ["Customer"] },
+      { href: "/pickups", label: "Pickups", roles: ["Admin", "Staff"] },
       { href: "/orders", label: "Orders", roles: ["Admin", "Staff"] },
       { href: "/orders", label: "My orders", roles: ["Customer"] },
       { href: "/refunds", label: "Refunds", roles: ["Admin", "Staff"] },

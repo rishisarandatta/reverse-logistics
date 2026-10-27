@@ -408,6 +408,8 @@ a.link:hover {
 .shell {
   min-height: 100vh;
   display: flex;
+  /* Paint the sidebar column the full page height, however long the page. */
+  background: linear-gradient(to right, var(--sidebar) 224px, var(--bg) 224px);
 }
 
 .sidebar {
@@ -567,6 +569,7 @@ a.link:hover {
 @media (max-width: 860px) {
   .shell {
     flex-direction: column;
+    background: var(--bg);
   }
 
   .sidebar {

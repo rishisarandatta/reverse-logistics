@@ -4,6 +4,7 @@ import { withConnection } from "@/lib/db";
 import { requireApiSession } from "@/lib/auth";
 import { errorResponse, readJson, toPositiveInt, toRequiredText } from "@/lib/http";
 import { logReturnEvent } from "@/lib/mongo";
+import { formatCurrency } from "@/lib/format";
 import { listPendingRefunds, listRefunds } from "@/lib/data/catalog";
 
 export async function GET() {
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
       returnId: refund.returnId,
       type: "REFUND_ISSUED",
       actor: { userId: session.userId, username: session.username, role: session.role },
-      message: `Refund of Rs. ${refund.amount.toFixed(2)} issued`,
+      message: `Refund of ${formatCurrency(refund.amount)} issued`,
       data: { refundId: refund.refundId, amount: refund.amount, method },
     });
 

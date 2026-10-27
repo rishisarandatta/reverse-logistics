@@ -132,6 +132,9 @@ test("Trigger", "Pickup for a return that is not approved is rejected", "SIGNAL:
 test("Trigger", "Pickup dated before the return is rejected", "SIGNAL: pickup before return date", (c) =>
   expectError(c, "INSERT INTO PICKUP (ReturnID, PickupDate, PickupAddress, CourierID) VALUES (9, '2026-10-01', 'x', 1)", [], /before the return date/));
 
+test("Constraint", "Pickup with an unknown courier is rejected", "1452 foreign key", (c) =>
+  expectError(c, "INSERT INTO PICKUP (ReturnID, PickupDate, PickupAddress, CourierID) VALUES (9, CURDATE(), 'x', 99)", [], /^1452/));
+
 test("Trigger", "Scheduling a pickup moves the return to Pickup Scheduled", "ReturnStatus = Pickup Scheduled", async (c) => {
   await c.query("INSERT INTO PICKUP (ReturnID, PickupDate, PickupAddress, CourierID) VALUES (9, CURDATE(), 'x', 1)");
   return assertEqual(await scalar(c, "SELECT ReturnStatus FROM RETURNS WHERE ReturnID = 9"), "Pickup Scheduled", "ReturnStatus");

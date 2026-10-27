@@ -4,6 +4,7 @@ import { withTransaction } from "@/lib/db";
 import { requireApiSession } from "@/lib/auth";
 import { HttpError, errorResponse, idParam, readJson, toRequiredText, toText } from "@/lib/http";
 import { logReturnEvent } from "@/lib/mongo";
+import { formatDate } from "@/lib/format";
 
 // Updates the pickup status: Picked Up, Failed, Cancelled, or Scheduled
 // again (reschedule, optionally with a new date). trg_pickup_before_update
@@ -39,7 +40,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/pickup
       actor: { userId: session.userId, username: session.username, role: session.role },
       message:
         status === "Scheduled"
-          ? `Pickup rescheduled${pickupDate ? ` for ${pickupDate}` : ""}`
+          ? `Pickup rescheduled${pickupDate ? ` for ${formatDate(pickupDate)}` : ""}`
           : `Pickup marked as ${status}`,
       data: { pickupId, status, ...(pickupDate ? { pickupDate } : {}) },
     });
