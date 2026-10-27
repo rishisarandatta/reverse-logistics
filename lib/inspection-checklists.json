@@ -1,0 +1,43 @@
+{
+  "Electronics": {
+    "checklist": [
+      "Powers on",
+      "Battery holds charge",
+      "Screen or display intact",
+      "Serial number matches order",
+      "All accessories included",
+      "No physical damage"
+    ],
+    "attributes": ["serialNumber", "batteryHealthPct", "factoryResetDone"]
+  },
+  "Clothing": {
+    "checklist": [
+      "Original tags attached",
+      "Unworn and unwashed",
+      "No stains or odour",
+      "Seams and zips intact",
+      "Original packaging"
+    ],
+    "attributes": ["sizeLabel", "fabric"]
+  },
+  "Home Appliances": {
+    "checklist": [
+      "Powers on",
+      "Motor or heating element works",
+      "All parts and attachments included",
+      "No cracks or dents",
+      "Safety seal intact"
+    ],
+    "attributes": ["wattageTested", "missingParts"]
+  },
+  "Footwear": {
+    "checklist": [
+      "Soles unworn",
+      "No creasing or scuffs",
+      "Original box included",
+      "Pair matches in size and colour",
+      "Insoles present"
+    ],
+    "attributes": ["sizeLabel", "soleWearPct"]
+  }
+}
