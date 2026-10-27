@@ -6,9 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:setup": "node --env-file=.env.local scripts/db-setup.mjs",
+    "db:reset": "node --env-file=.env.local scripts/db-setup.mjs --reset",
+    "mongo:setup": "node --env-file=.env.local scripts/mongo-setup.mjs",
+    "test:db": "node --env-file=.env.local scripts/test-db.mjs",
+    "test:api": "node scripts/test-api.mjs"
   },
   "dependencies": {
+    "mongodb": "^6.21.0",
     "mysql2": "^3.24.6",
     "next": "16.4.2",
     "react": "19.3.0",
