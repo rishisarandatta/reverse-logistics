@@ -1,83 +1,95 @@
-import pool from "@/lib/db";
-import type { RowDataPacket } from "mysql2";
+import Link from "next/link";
+import CustomerForm from "./CustomerForm";
+import DeleteButton from "../components/DeleteButton";
+import Disclosure from "../components/Disclosure";
+import PageHeader from "../components/PageHeader";
+import { requirePageSession } from "@/lib/auth";
+import { formatCurrency } from "@/lib/format";
+import { listCustomers } from "@/lib/data/catalog";
 
-interface Customer extends RowDataPacket {
-  CustomerID: number;
-  Name: string;
-  Email: string | null;
-  Phone: string | null;
-  Address: string | null;
-  CustomerType: string | null;
-  OrderID: number | null;
-  OrderDate: string | null;
-  TotalAmount: number | null;
-  OrderStatus: string | null;
-}
+export default async function CustomersPage({ searchParams }: PageProps<"/customers">) {
+  const session = await requirePageSession("Admin", "Staff");
+  const params = await searchParams;
+  const q = typeof params.q === "string" ? params.q : "";
+  const type = typeof params.type === "string" ? params.type : "";
 
-export default async function CustomersPage() {
-  const [customers] = await pool.query<Customer[]>(`
-    SELECT
-      c.CustomerID,
-      c.Name,
-      c.Email,
-      c.Phone,
-      c.Address,
-      c.CustomerType,
-      o.OrderID,
-      o.OrderDate,
-      o.TotalAmount,
-      o.OrderStatus
-    FROM CUSTOMER c
-    LEFT JOIN ORDERS o
-      ON c.CustomerID = o.CustomerID
-    ORDER BY c.CustomerID, o.OrderID DESC
-  `);
+  const customers = await listCustomers({ q: q || null, type: type || null });
+  const admin = session.role === "Admin";
 
   return (
-    <main>
-      <h1>Customer Management</h1>
+    <main className="page">
+      <PageHeader title="Customers" description="Customer records with their order and return history." />
 
-      <table border={1} cellPadding={10}>
-        <thead>
-          <tr>
-            <th>Customer ID</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Customer Type</th>
-            <th>Order ID</th>
-            <th>Order Date</th>
-            <th>Total Amount</th>
-            <th>Order Status</th>
-          </tr>
-        </thead>
+      {admin && (
+        <Disclosure label="Add customer">
+          <CustomerForm />
+        </Disclosure>
+      )}
 
-        <tbody>
-          {customers.map((customer, index) => (
-            <tr
-              key={`${customer.CustomerID}-${customer.OrderID ?? "none"}-${index}`}
-            >
-              <td>{customer.CustomerID}</td>
-              <td>{customer.Name}</td>
-              <td>{customer.Email ?? "—"}</td>
-              <td>{customer.Phone ?? "—"}</td>
-              <td>{customer.CustomerType ?? "—"}</td>
-              <td>{customer.OrderID ?? "No orders"}</td>
-              <td>
-                {customer.OrderDate
-                  ? new Date(customer.OrderDate).toLocaleDateString("en-IN")
-                  : "—"}
-              </td>
-              <td>
-                {customer.TotalAmount !== null
-                  ? `₹${Number(customer.TotalAmount).toFixed(2)}`
-                  : "—"}
-              </td>
-              <td>{customer.OrderStatus ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="card card-flush">
+        <form className="toolbar" method="get">
+          <div className="min-w-60 flex-1">
+            <label className="label" htmlFor="q">Search</label>
+            <input id="q" name="q" defaultValue={q} className="input" placeholder="Name, email or phone" />
+          </div>
+          <div className="w-40">
+            <label className="label" htmlFor="type">Type</label>
+            <select id="type" name="type" defaultValue={type} className="input">
+              <option value="">All types</option>
+              <option value="Regular">Regular</option>
+              <option value="Premium">Premium</option>
+            </select>
+          </div>
+          <button className="btn btn-secondary" type="submit">Apply</button>
+          {(q || type) && <Link href="/customers" className="btn btn-secondary">Clear</Link>}
+        </form>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Contact</th>
+                <th>Type</th>
+                <th className="num">Orders</th>
+                <th className="num">Spent</th>
+                <th className="num">Returns</th>
+                <th className="num">Refunded</th>
+                {admin && <th></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <tr key={c.CustomerID}>
+                  <td>
+                    <div className="font-medium">{c.Name}</div>
+                    <div className="text-xs text-[var(--muted)]">
+                      #{c.CustomerID}{c.Username ? ` · login: ${c.Username}` : ""}
+                    </div>
+                  </td>
+                  <td>
+                    <div>{c.Email}</div>
+                    <div className="text-xs text-[var(--muted)]">{c.Phone ?? "No phone"}</div>
+                  </td>
+                  <td>{c.CustomerType}</td>
+                  <td className="num">{c.TotalOrders}</td>
+                  <td className="num">{formatCurrency(c.TotalSpent)}</td>
+                  <td className="num">{c.TotalReturns}</td>
+                  <td className="num">{formatCurrency(c.TotalRefunded)}</td>
+                  {admin && (
+                    <td className="text-right">
+                      <DeleteButton url={`/api/customers/${c.CustomerID}`} confirmText={`Delete customer ${c.Name}?`} />
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {customers.length === 0 && (
+                <tr><td colSpan={admin ? 8 : 7} className="table-empty">No customers match these filters.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </main>
   );
 }

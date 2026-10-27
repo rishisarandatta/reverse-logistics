@@ -1,75 +1,80 @@
-import OrderForm from "./OrderForm";
-import pool from "@/lib/db";
-export default async function OrdersPage() {
-  const [orders] = await pool.query(`
-    SELECT
-      o.OrderID,
-      o.CustomerID,
-      o.OrderDate,
-      o.TotalAmount,
-      o.PaymentMethod,
-      o.OrderStatus,
-      oi.ProductID,
-      p.ProductName,
-      oi.Quantity,
-      oi.UnitPrice
-    FROM ORDERS o
-    LEFT JOIN ORDER_ITEM oi
-      ON o.OrderID = oi.OrderID
-    LEFT JOIN PRODUCT p
-      ON oi.ProductID = p.ProductID
-    ORDER BY o.OrderID, oi.OrderItemID
-  `);
+import Link from "next/link";
+import OrderStatusSelect from "./OrderStatusSelect";
+import PageHeader from "../components/PageHeader";
+import StatusBadge from "../components/StatusBadge";
+import { isStaff, requirePageSession } from "@/lib/auth";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { listOrderLines, type OrderLine } from "@/lib/data/orders";
 
-  const rows = orders as any[];
+export default async function OrdersPage() {
+  const session = await requirePageSession();
+  const staff = isStaff(session);
+  const lines = await listOrderLines(session);
+
+  // Group order lines (one row per item from OrderDetailsView) by order.
+  const orders = new Map<number, OrderLine[]>();
+  for (const line of lines) {
+    orders.set(line.OrderID, [...(orders.get(line.OrderID) ?? []), line]);
+  }
 
   return (
-    <main>
-      <h1>Order Management</h1>
-      <OrderForm />
-      <table>
-        <thead>
-          <tr>
-            <th>Order ID</th>
-            <th>Customer ID</th>
-            <th>Order Date</th>
-            <th>Total Amount</th>
-            <th>Payment</th>
-            <th>Status</th>
-            <th>Product</th>
-            <th>Quantity</th>
-            <th>Unit Price</th>
-          </tr>
-        </thead>
+    <main className="page">
+      <PageHeader
+        title={staff ? "Orders" : "My orders"}
+        description={staff ? "All customer orders. Change the status as orders are shipped and delivered." : "Orders you have placed."}
+      >
+        <Link href="/orders/new" className="btn">{staff ? "New order" : "Place an order"}</Link>
+      </PageHeader>
 
-        <tbody>
-          {rows.map((o, i) => (
-            <tr key={`${o.OrderID}-${o.ProductID}-${i}`}>
-              <td>{o.OrderID}</td>
-              <td>{o.CustomerID}</td>
-              <td>
-                {o.OrderDate
-                  ? new Date(o.OrderDate).toLocaleDateString("en-IN")
-                  : "-"}
-              </td>
-              <td>
-                {o.TotalAmount != null
-                  ? `₹${Number(o.TotalAmount).toFixed(2)}`
-                  : "-"}
-              </td>
-              <td>{o.PaymentMethod || "-"}</td>
-              <td>{o.OrderStatus || "-"}</td>
-              <td>{o.ProductName || "-"}</td>
-              <td>{o.Quantity ?? "-"}</td>
-              <td>
-                {o.UnitPrice != null
-                  ? `₹${Number(o.UnitPrice).toFixed(2)}`
-                  : "-"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="card card-flush">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Date</th>
+                {staff && <th>Customer</th>}
+                <th>Items</th>
+                <th>Payment</th>
+                <th className="num">Total</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...orders.values()].map((items) => {
+                const order = items[0];
+                return (
+                  <tr key={order.OrderID}>
+                    <td className="font-medium">#{order.OrderID}</td>
+                    <td className="whitespace-nowrap">{formatDate(order.OrderDate)}</td>
+                    {staff && <td>{order.CustomerName}</td>}
+                    <td>
+                      {items.map((item) => (
+                        <div key={item.OrderItemID}>
+                          {item.ProductName}
+                          <span className="muted"> × {item.Quantity}</span>
+                        </div>
+                      ))}
+                    </td>
+                    <td>{order.PaymentMethod}</td>
+                    <td className="num">{formatCurrency(order.TotalAmount)}</td>
+                    <td>
+                      {staff ? (
+                        <OrderStatusSelect orderId={order.OrderID} status={order.OrderStatus} />
+                      ) : (
+                        <StatusBadge status={order.OrderStatus} />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {orders.size === 0 && (
+                <tr><td colSpan={staff ? 7 : 6} className="table-empty">No orders yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </main>
   );
 }

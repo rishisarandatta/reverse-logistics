@@ -1,98 +1,147 @@
-
-import pool from "@/lib/db";
+import Link from "next/link";
 import type { RowDataPacket } from "mysql2";
-
-type CountRow = RowDataPacket & { total: number };
+import pool from "@/lib/db";
+import PageHeader from "./components/PageHeader";
+import StatusBadge from "./components/StatusBadge";
+import { isStaff, requirePageSession, type Session } from "@/lib/auth";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { countReturnsByStatus, listReturns, type ReturnRow } from "@/lib/data/returns";
 
 export default async function Home() {
-  let customers = "—";
-  let products = "—";
-  let orders = "—";
+  const session = await requirePageSession();
+  return isStaff(session) ? <StaffHome session={session} /> : <CustomerHome session={session} />;
+}
 
-  try {
-    const [customerRows] = await pool.query<CountRow[]>(
-      "SELECT COUNT(*) AS total FROM CUSTOMER"
-    );
-    const [productRows] = await pool.query<CountRow[]>(
-      "SELECT COUNT(*) AS total FROM PRODUCT"
-    );
-    const [orderRows] = await pool.query<CountRow[]>(
-      "SELECT COUNT(*) AS total FROM ORDERS"
-    );
+async function StaffHome({ session }: { session: Session }) {
+  const [counts, [queue]] = await Promise.all([
+    countReturnsByStatus(session),
+    pool.query<RowDataPacket[]>("SELECT * FROM PendingActionsView ORDER BY DaysOpen DESC LIMIT 10"),
+  ]);
 
-    customers = String(customerRows[0].total);
-    products = String(productRows[0].total);
-    orders = String(orderRows[0].total);
-  } catch (error) {
-    console.error("Database connection error:", error);
-  }
+  const tiles = [
+    { label: "To review", status: "Requested", hint: "Approve or reject" },
+    { label: "Awaiting pickup", status: "Approved", hint: "Book a courier" },
+    { label: "Pickup booked", status: "Pickup Scheduled", hint: "Confirm collection" },
+    { label: "To inspect", status: "Picked Up", hint: "Inspect the item" },
+    { label: "To refund", status: "Inspected", hint: "Issue the refund" },
+  ];
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="bg-slate-900 px-8 py-5 text-white">
-        <h1 className="text-2xl font-bold">
-          Reverse Logistics Management System
-        </h1>
-        <p className="mt-1 text-sm text-slate-300">
-          Customer, product and order management
-        </p>
-      </header>
+    <main className="page">
+      <PageHeader title="Overview" description={`Signed in as ${session.username}. Returns that need action are listed below.`}>
+        <Link href="/returns/new" className="btn btn-secondary">New return</Link>
+        <Link href="/dashboard" className="btn">Analytics</Link>
+      </PageHeader>
 
-      <div className="mx-auto max-w-7xl p-8">
-        <h2 className="mb-6 text-2xl font-semibold">Dashboard</h2>
+      <div className="stats">
+        {tiles.map((tile) => (
+          <Link key={tile.status} href={`/returns?status=${encodeURIComponent(tile.status)}`} className="stat block hover:bg-[var(--surface-muted)]">
+            <div className="stat-label">{tile.label}</div>
+            <div className="stat-value">{counts[tile.status] ?? 0}</div>
+            <div className="stat-hint">{tile.hint}</div>
+          </Link>
+        ))}
+      </div>
 
-        <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">Customers</p>
-            <p className="mt-2 text-3xl font-bold">{customers}</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Registered customers
-            </p>
-          </div>
+      <h2 className="section-title">Work queue</h2>
+      <div className="card card-flush">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Return</th>
+                <th>Customer</th>
+                <th>Product</th>
+                <th>Status</th>
+                <th>Next action</th>
+                <th className="num">Days open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {queue.map((r) => (
+                <tr key={r.ReturnID}>
+                  <td><Link href={`/returns/${r.ReturnID}`} className="link">#{r.ReturnID}</Link></td>
+                  <td>{r.CustomerName}</td>
+                  <td>{r.ProductName}</td>
+                  <td><StatusBadge status={r.ReturnStatus} /></td>
+                  <td>{r.NextAction}</td>
+                  <td className="num">{r.DaysOpen}</td>
+                </tr>
+              ))}
+              {queue.length === 0 && (
+                <tr><td colSpan={6} className="table-empty">Nothing needs attention right now.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  );
+}
 
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">Products</p>
-            <p className="mt-2 text-3xl font-bold">{products}</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Product catalogue
-            </p>
-          </div>
+// What the customer should expect next, in plain words.
+function customerNextStep(r: ReturnRow): string {
+  switch (r.ReturnStatus) {
+    case "Requested": return "Waiting for our team to review your request";
+    case "Approved": return "Approved. We will book a pickup shortly";
+    case "Pickup Scheduled": return `Courier pickup on ${formatDate(r.PickupDate)}`;
+    case "Picked Up": return "Collected. The item is being inspected";
+    case "Inspected": return "Inspected. Your refund is being processed";
+    case "Refunded": return `Refunded ${formatCurrency(r.RefundAmount)}`;
+    case "Rejected": return "The return request was not accepted";
+    case "Closed": return "Closed after inspection";
+    default: return "";
+  }
+}
 
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">Orders</p>
-            <p className="mt-2 text-3xl font-bold">{orders}</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Customer orders
-            </p>
-          </div>
-        </section>
+async function CustomerHome({ session }: { session: Session }) {
+  const [returns, [summary]] = await Promise.all([
+    listReturns(session),
+    pool.query<RowDataPacket[]>(
+      "SELECT TotalOrders, TotalReturns, TotalRefunded FROM CustomerReturnSummaryView WHERE CustomerID = ?",
+      [session.customerId]
+    ),
+  ]);
+  const s = summary[0] ?? { TotalOrders: 0, TotalReturns: 0, TotalRefunded: 0 };
+  const open = returns.filter((r) => !["Refunded", "Rejected", "Closed"].includes(r.ReturnStatus)).length;
 
-        <section className="mt-8 rounded-xl bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold">Core Modules</h2>
+  return (
+    <main className="page">
+      <PageHeader title={`Hello, ${session.username}`} description="Track your returns and orders.">
+        <Link href="/orders/new" className="btn btn-secondary">Place an order</Link>
+        <Link href="/returns/new" className="btn">Request a return</Link>
+      </PageHeader>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 p-5">
-              <h3 className="font-semibold">Customer Management</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                Manage customer records and customer types.
-              </p>
-            </div>
+      <div className="stats">
+        <div className="stat"><div className="stat-label">Orders</div><div className="stat-value">{s.TotalOrders}</div></div>
+        <div className="stat"><div className="stat-label">Returns in progress</div><div className="stat-value">{open}</div></div>
+        <div className="stat"><div className="stat-label">Total returns</div><div className="stat-value">{s.TotalReturns}</div></div>
+        <div className="stat"><div className="stat-label">Refunded to you</div><div className="stat-value">{formatCurrency(s.TotalRefunded)}</div></div>
+      </div>
 
-            <div className="rounded-lg border border-slate-200 p-5">
-              <h3 className="font-semibold">Product Management</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                View products, categories and prices.
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 p-5">
-              <h3 className="font-semibold">Order Management</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                View orders and their associated items.
-              </p>
-            </div>
-          </div>
-        </section>
+      <h2 className="section-title">Your returns</h2>
+      <div className="card card-flush">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Return</th><th>Product</th><th>Requested</th><th>Status</th><th>What happens next</th></tr>
+            </thead>
+            <tbody>
+              {returns.slice(0, 8).map((r) => (
+                <tr key={r.ReturnID}>
+                  <td><Link href={`/returns/${r.ReturnID}`} className="link">#{r.ReturnID}</Link></td>
+                  <td>{r.ProductName}</td>
+                  <td>{formatDate(r.ReturnDate)}</td>
+                  <td><StatusBadge status={r.ReturnStatus} /></td>
+                  <td className="muted">{customerNextStep(r)}</td>
+                </tr>
+              ))}
+              {returns.length === 0 && (
+                <tr><td colSpan={5} className="table-empty">You have no returns yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </main>
   );
