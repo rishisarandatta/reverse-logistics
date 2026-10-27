@@ -1,86 +1,65 @@
-import { NextResponse } from "next/server";
-import pool from "@/lib/db";
-import type { ResultSetHeader, RowDataPacket } from "mysql2";
+import { NextResponse, type NextRequest } from "next/server";
+import type { RowDataPacket } from "mysql2";
+import { withTransaction } from "@/lib/db";
+import { requireApiSession } from "@/lib/auth";
+import { errorResponse, readJson, toPositiveInt, toText } from "@/lib/http";
+import { logReturnEvent } from "@/lib/mongo";
+import { listReturns } from "@/lib/data/returns";
 
-interface OrderItemRow extends RowDataPacket {
-  OrderID: number;
+// ?status= filters by workflow status, ?q= runs a full-text search over
+// return comments and inspection remarks. Customers see only their own.
+export async function GET(request: NextRequest) {
+  try {
+    const session = await requireApiSession();
+    const params = request.nextUrl.searchParams;
+    const returns = await listReturns(session, {
+      status: params.get("status"),
+      q: params.get("q"),
+    });
+    return NextResponse.json({ returns });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
+// Registers a return through the sp_register_return stored procedure.
+// Ownership is checked by the procedure; the 30-day window, delivered-only
+// and quantity rules by trg_returns_before_insert.
 export async function POST(request: Request) {
-  let connection;
-
   try {
-    const { orderItemId, reason, comments } = await request.json();
+    const session = await requireApiSession();
+    const body = await readJson(request);
 
-    if (!orderItemId || !reason) {
-      return NextResponse.json(
-        { error: "Order Item ID and return reason are required." },
-        { status: 400 }
-      );
-    }
+    const orderItemId = toPositiveInt(body.orderItemId, "Order item");
+    const reasonId = toPositiveInt(body.reasonId, "Return reason");
+    const quantity = toPositiveInt(body.quantity ?? 1, "Quantity");
+    const comments = toText(body.comments, "Comments", { max: 500 });
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+    const returnId = await withTransaction(session.userId, async (connection) => {
+      await connection.query("CALL sp_register_return(?, ?, ?, ?, ?, @return_id)", [
+        orderItemId,
+        reasonId,
+        quantity,
+        comments,
+        session.role === "Customer" ? session.customerId : null,
+      ]);
+      const [rows] = await connection.query<RowDataPacket[]>("SELECT @return_id AS returnId");
+      return Number(rows[0].returnId);
+    });
 
-    // Check that the order item exists
-    const [items] = await connection.query<OrderItemRow[]>(
-      `SELECT OrderID
-       FROM ORDER_ITEM
-       WHERE OrderItemID = ?
-       FOR UPDATE`,
-      [Number(orderItemId)]
-    );
-
-    if (items.length === 0) {
-      await connection.rollback();
-
-      return NextResponse.json(
-        { error: "Order Item ID does not exist." },
-        { status: 404 }
-      );
-    }
-
-    const orderId = items[0].OrderID;
-
-    // Generate a return ID
-    const [idRows] = await connection.query<RowDataPacket[]>(
-      `SELECT COALESCE(MAX(ReturnID), 0) + 1 AS nextId
-       FROM RETURNS`
-    );
-
-    const returnId = Number(idRows[0].nextId);
-
-    // Save the return
-    await connection.query<ResultSetHeader>(
-      `INSERT INTO RETURNS
-       (ReturnID, OrderItemID, ReturnDate, ReturnReasonID,
-        ReturnStatus, Comments, OrderID)
-       VALUES (?, ?, CURDATE(), ?, 'Pending', ?, ?)`,
-      [
-        returnId,
-        Number(orderItemId),
-        Number(reason),
-        comments || null,
-        orderId,
-      ]
-    );
-
-    await connection.commit();
+    await logReturnEvent({
+      returnId,
+      type: "REQUEST_CREATED",
+      actor: { userId: session.userId, username: session.username, role: session.role },
+      message: "Return requested",
+      data: { orderItemId, reasonId, quantity, comments: comments ?? "" },
+    });
 
     return NextResponse.json(
-      { message: "Return registered successfully!" },
+      { message: "Return registered successfully.", returnId },
       { status: 201 }
     );
   } catch (error) {
-    if (connection) await connection.rollback();
-
-    console.error("Return API error:", error);
-
-    return NextResponse.json(
-      { error: "Failed to register return." },
-      { status: 500 }
-    );
-  } finally {
-    connection?.release();
+    return errorResponse(error);
   }
 }

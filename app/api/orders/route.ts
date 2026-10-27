@@ -1,166 +1,73 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/db";
-import type { RowDataPacket } from "mysql2";
-import type { PoolConnection } from "mysql2/promise";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
+import { withTransaction } from "@/lib/db";
+import { requireApiSession } from "@/lib/auth";
+import { HttpError, errorResponse, readJson, toPositiveInt, toRequiredText } from "@/lib/http";
+import { listOrderLines } from "@/lib/data/orders";
 
-export async function POST(request: Request) {
-  let connection: PoolConnection | undefined;
-  let transactionStarted = false;
-
+export async function GET() {
   try {
-    const body = await request.json();
-
-    const customerId = Number(body.customerId);
-    const paymentMethod = String(body.paymentMethod || "").trim();
-    const items = body.items;
-
-    // Validate customer and order details
-    if (
-      !Number.isInteger(customerId) ||
-      customerId <= 0 ||
-      !paymentMethod ||
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
-      return NextResponse.json(
-        { error: "Invalid customer, payment method, or order items." },
-        { status: 400 }
-      );
-    }
-
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    transactionStarted = true;
-
-    // Check whether customer exists
-    const [customers] = await connection.query<RowDataPacket[]>(
-      "SELECT CustomerID FROM CUSTOMER WHERE CustomerID = ?",
-      [customerId]
-    );
-
-    if (customers.length === 0) {
-      await connection.rollback();
-      transactionStarted = false;
-
-      return NextResponse.json(
-        { error: "Customer not found." },
-        { status: 404 }
-      );
-    }
-
-    // Validate products and calculate total using database prices
-    let totalAmount = 0;
-
-    const validatedItems: {
-      productId: number;
-      quantity: number;
-      unitPrice: number;
-    }[] = [];
-
-    for (const item of items) {
-      const productId = Number(item.productId);
-      const quantity = Number(item.quantity);
-
-      if (
-        !Number.isInteger(productId) ||
-        productId <= 0 ||
-        !Number.isInteger(quantity) ||
-        quantity <= 0
-      ) {
-        throw new Error("Invalid product or quantity.");
-      }
-
-      // Your PRODUCT table uses UnitPrice
-      const [products] = await connection.query<RowDataPacket[]>(
-        "SELECT ProductID, UnitPrice FROM PRODUCT WHERE ProductID = ?",
-        [productId]
-      );
-
-      if (products.length === 0) {
-        throw new Error(`Product ${productId} not found.`);
-      }
-
-      const unitPrice = Number(products[0].UnitPrice);
-
-      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-        throw new Error("Invalid product price.");
-      }
-
-      totalAmount += unitPrice * quantity;
-
-      validatedItems.push({
-        productId,
-        quantity,
-        unitPrice,
-      });
-    }
-
-    // Generate the next order ID using the current manual-ID schema
-    const [orderIds] = await connection.query<RowDataPacket[]>(
-      "SELECT COALESCE(MAX(OrderID), 0) + 1 AS nextId FROM ORDERS"
-    );
-
-    const orderId = Number(orderIds[0].nextId);
-
-    // Insert order
-    await connection.query(
-      `INSERT INTO ORDERS
-       (OrderID, CustomerID, OrderDate, TotalAmount, PaymentMethod, OrderStatus)
-       VALUES (?, ?, CURRENT_DATE, ?, ?, ?)`,
-      [
-        orderId,
-        customerId,
-        totalAmount,
-        paymentMethod,
-        "Placed",
-      ]
-    );
-
-    // Insert all order items
-    for (const item of validatedItems) {
-      const [itemIds] = await connection.query<RowDataPacket[]>(
-        "SELECT COALESCE(MAX(OrderItemID), 0) + 1 AS nextId FROM ORDER_ITEM"
-      );
-
-      const orderItemId = Number(itemIds[0].nextId);
-
-      await connection.query(
-        `INSERT INTO ORDER_ITEM
-         (OrderItemID, OrderID, ProductID, Quantity, UnitPrice)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          orderItemId,
-          orderId,
-          item.productId,
-          item.quantity,
-          item.unitPrice,
-        ]
-      );
-    }
-
-    await connection.commit();
-    transactionStarted = false;
-
-    return NextResponse.json(
-      {
-        message: "Order created successfully.",
-        orderId,
-        totalAmount,
-      },
-      { status: 201 }
-    );
+    const session = await requireApiSession();
+    return NextResponse.json({ orders: await listOrderLines(session) });
   } catch (error) {
-    if (connection && transactionStarted) {
-      await connection.rollback();
+    return errorResponse(error);
+  }
+}
+
+// Places an order with one or more items as a single transaction.
+// Prices are read from PRODUCT (never trusted from the client) and
+// ORDERS.TotalAmount is maintained by the ORDER_ITEM triggers. If any item
+// is invalid, the whole order is rolled back.
+export async function POST(request: Request) {
+  try {
+    const session = await requireApiSession();
+    const body = await readJson(request);
+
+    // Customers always order for themselves; staff can order for anyone.
+    const customerId =
+      session.role === "Customer"
+        ? (session.customerId as number)
+        : toPositiveInt(body.customerId, "Customer");
+    const paymentMethod = toRequiredText(body.paymentMethod, "Payment method", 50);
+
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      throw new HttpError(400, "An order needs at least one item.");
     }
+    const items = body.items.map((item: { productId?: unknown; quantity?: unknown }) => ({
+      productId: toPositiveInt(item?.productId, "Product"),
+      quantity: toPositiveInt(item?.quantity, "Quantity"),
+    }));
 
-    console.error("Order creation failed:", error);
+    const order = await withTransaction(session.userId, async (connection) => {
+      const [orderResult] = await connection.query<ResultSetHeader>(
+        `INSERT INTO ORDERS (OrderDate, PaymentMethod, OrderStatus, CustomerID)
+         VALUES (CURRENT_DATE, ?, 'Placed', ?)`,
+        [paymentMethod, customerId]
+      );
+      const orderId = orderResult.insertId;
 
-    return NextResponse.json(
-      { error: "Order creation failed. Transaction rolled back." },
-      { status: 500 }
-    );
-  } finally {
-    connection?.release();
+      for (const item of items) {
+        // INSERT ... SELECT copies the current catalogue price; zero rows
+        // inserted means the product does not exist.
+        const [itemResult] = await connection.query<ResultSetHeader>(
+          `INSERT INTO ORDER_ITEM (OrderID, ProductID, Quantity, UnitPrice)
+           SELECT ?, ProductID, ?, UnitPrice FROM PRODUCT WHERE ProductID = ?`,
+          [orderId, item.quantity, item.productId]
+        );
+        if (itemResult.affectedRows === 0) {
+          throw new HttpError(400, `Product ${item.productId} does not exist.`);
+        }
+      }
+
+      const [rows] = await connection.query<RowDataPacket[]>(
+        "SELECT TotalAmount FROM ORDERS WHERE OrderID = ?",
+        [orderId]
+      );
+      return { orderId, totalAmount: Number(rows[0].TotalAmount) };
+    });
+
+    return NextResponse.json({ message: "Order created successfully.", ...order }, { status: 201 });
+  } catch (error) {
+    return errorResponse(error);
   }
 }
